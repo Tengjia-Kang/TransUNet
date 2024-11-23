@@ -15,28 +15,24 @@ from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
 
 parser = argparse.ArgumentParser()
-# addition
-parser.add_argument('--cross_validation', type=str, help='cross validation setting', required=False)
 parser.add_argument('--volume_path', type=str,
                     default='../data/Synapse/test_vol_h5', help='root dir for validation volume data')  # for acdc volume_path=root_dir
 parser.add_argument('--dataset', type=str,
                     default='Synapse', help='experiment_name')
 parser.add_argument('--num_classes', type=int,
-                    default=2, help='output channel of network')
+                    default=4, help='output channel of network')
 parser.add_argument('--list_dir', type=str,
-                    default='./lists/lists_CSP/fold_0', help='list dir')
+                    default='./lists/lists_Synapse', help='list dir')
 
 parser.add_argument('--max_iterations', type=int,default=20000, help='maximum epoch number to train')
-parser.add_argument('--max_epochs', type=int, default=150, help='maximum epoch number to train')
+parser.add_argument('--max_epochs', type=int, default=30, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=24,
                     help='batch_size per gpu')
 parser.add_argument('--img_size', type=int, default=224, help='input patch size of network input')
 parser.add_argument('--is_savenii', action="store_true", help='whether to save results during inference')
 
 parser.add_argument('--n_skip', type=int, default=3, help='using number of skip-connect, default is num')
-# parser.add_argument('--vit_name', type=str, default='ViT-B_16', help='select one vit model')
-parser.add_argument('--vit_name', type=str,
-                    default='R50-ViT-B_16', help='select one vit model')
+parser.add_argument('--vit_name', type=str, default='ViT-B_16', help='select one vit model')
 
 parser.add_argument('--test_save_dir', type=str, default='../predictions', help='saving prediction as nii!')
 parser.add_argument('--deterministic', type=int,  default=1, help='whether use deterministic training')
@@ -53,8 +49,7 @@ def inference(args, model, test_save_path=None):
     model.eval()
     metric_list = 0.0
     for i_batch, sampled_batch in tqdm(enumerate(testloader)):
-        # h, w = sampled_batch["image"].size()[2:]
-        h, w = sampled_batch["image"].size(1), sampled_batch["image"].size(2)
+        h, w = sampled_batch["image"].size()[2:]
         image, label, case_name = sampled_batch["image"], sampled_batch["label"], sampled_batch['case_name'][0]
         metric_i = test_single_volume(image, label, model, classes=args.num_classes, patch_size=[args.img_size, args.img_size],
                                       test_save_path=test_save_path, case=case_name, z_spacing=args.z_spacing)
@@ -70,6 +65,7 @@ def inference(args, model, test_save_path=None):
 
 
 if __name__ == "__main__":
+
     if not args.deterministic:
         cudnn.benchmark = True
         cudnn.deterministic = False
@@ -84,18 +80,11 @@ if __name__ == "__main__":
     dataset_config = {
         'Synapse': {
             'Dataset': Synapse_dataset,
-            'volume_path': 'datasets/project_TransUNet/data/Synapse/test_vol_h5',
+            'volume_path': '../data/Synapse/test_vol_h5',
             'list_dir': './lists/lists_Synapse',
             'num_classes': 9,
             'z_spacing': 1,
         },
-        'CSP': {
-            'Dataset': Synapse_dataset,
-            'volume_path': '/home/kang/Hard/Medical_Seg/TransUNet-main/datasets/CSP/TDI/cross_fold/val/fold_0',
-            'list_dir': '/home/kang/Hard/Medical_Seg/TransUNet-main/lists/lists_CSP/fold_0',
-            'num_classes': 2,
-            'z_spacing': 1,
-        }
     }
     dataset_name = args.dataset
     args.num_classes = dataset_config[dataset_name]['num_classes']
@@ -107,7 +96,7 @@ if __name__ == "__main__":
 
     # name the same snapshot defined in train script!
     args.exp = 'TU_' + dataset_name + str(args.img_size)
-    snapshot_path = "model/{}/{}".format(args.exp, 'TU')
+    snapshot_path = "../model/{}/{}".format(args.exp, 'TU')
     snapshot_path = snapshot_path + '_pretrain' if args.is_pretrain else snapshot_path
     snapshot_path += '_' + args.vit_name
     snapshot_path = snapshot_path + '_skip' + str(args.n_skip)
@@ -119,14 +108,10 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_lr' + str(args.base_lr) if args.base_lr != 0.01 else snapshot_path
     snapshot_path = snapshot_path + '_'+str(args.img_size)
     snapshot_path = snapshot_path + '_s'+str(args.seed) if args.seed!=1234 else snapshot_path
-    snapshot_path = snapshot_path + '_' + str(args.cross_validation) if args.cross_validation  else snapshot_path
-    # transfer parameters form args to config_vit
+
     config_vit = CONFIGS_ViT_seg[args.vit_name]
     config_vit.n_classes = args.num_classes
     config_vit.n_skip = args.n_skip
-
-    # todo
-    # config_vit.skip_channels = args.n_skip
     config_vit.patches.size = (args.vit_patches_size, args.vit_patches_size)
     if args.vit_name.find('R50') !=-1:
         config_vit.patches.grid = (int(args.img_size/args.vit_patches_size), int(args.img_size/args.vit_patches_size))
@@ -134,7 +119,6 @@ if __name__ == "__main__":
 
     snapshot = os.path.join(snapshot_path, 'best_model.pth')
     if not os.path.exists(snapshot): snapshot = snapshot.replace('best_model', 'epoch_'+str(args.max_epochs-1))
-
     net.load_state_dict(torch.load(snapshot))
     snapshot_name = snapshot_path.split('/')[-1]
 
